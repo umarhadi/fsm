@@ -34,7 +34,7 @@ func FetchListAndBlobs(ctx context.Context, r *fsm.Request[Req, Res], app *App) 
 	}
 
 	if len(layers) == 0 {
-		return nil, fmt.Errorf("no layers found for family %s", r.Msg.Family)
+		return nil, fsm.Abort(fmt.Errorf("no layers found for family %s — check s3 bucket prefix", r.Msg.Family))
 	}
 
 	app.Logger.Infof("Found %d layers in family %s", len(layers), r.Msg.Family)
