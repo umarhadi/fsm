@@ -54,19 +54,15 @@ func FetchListAndBlobs(ctx context.Context, r *fsm.Request[Req, Res], app *App) 
 
 	// download and process each layer
 	var manifest []Layer
-	successCount := 0
 
 	for i, l := range layers {
 		// downloadifmissing is idempotent: skips if blob already exists locally
 		path, dig, err := app.S3.DownloadIfMissing(ctx, &l)
 		if err != nil {
-			// gracefully handle missing blobs (they may appear in test environment)
-			app.Logger.Warnf("blob %s not available, may appear in test: %v", l.Key, err)
-			continue
+			return nil, fmt.Errorf("download blob %s: %w", l.Key, err)
 		}
 
 		l.Path, l.Digest = path, dig
-		successCount++
 
 		// upsert blob metadata (idempotent)
 		if err := upsertBlob(ctx, tx, l); err != nil {
@@ -81,11 +77,7 @@ func FetchListAndBlobs(ctx context.Context, r *fsm.Request[Req, Res], app *App) 
 		manifest = append(manifest, l)
 	}
 
-	if successCount == 0 {
-		return nil, fmt.Errorf("no blobs successfully downloaded for family %s", r.Msg.Family)
-	}
-
-	app.Logger.Infof("Successfully downloaded %d/%d blobs", successCount, len(layers))
+	app.Logger.Infof("Successfully downloaded %d blobs", len(manifest))
 
 	// mark image as complete
 	if _, err := tx.ExecContext(ctx, `UPDATE images SET complete=1 WHERE id=?`, imageID); err != nil {
