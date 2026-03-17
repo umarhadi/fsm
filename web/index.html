@@ -1,0 +1,871 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>fsm — container image orchestrator</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:ital,wght@0,100..800;1,100..800&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg:         #060a0e;
+      --surface:    #0c1219;
+      --surface-2:  #101820;
+      --border:     #162030;
+      --border-mid: #1e2f45;
+      --green:      #00e887;
+      --green-dim:  rgba(0,232,135,0.12);
+      --green-glow: rgba(0,232,135,0.06);
+      --amber:      #ffb83f;
+      --amber-dim:  rgba(255,184,63,0.12);
+      --amber-glow: rgba(255,184,63,0.06);
+      --blue:       #5aabff;
+      --red:        #ff4d6a;
+      --text:       #ccdded;
+      --text-mid:   #6a8ba8;
+      --text-dim:   #2f4860;
+    }
+
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    html { scroll-behavior: smooth; }
+
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 13px;
+      line-height: 1.6;
+      overflow-x: hidden;
+    }
+
+    /* dot grid background */
+    body::before {
+      content: '';
+      position: fixed;
+      inset: 0;
+      background-image: radial-gradient(circle, var(--border) 1px, transparent 1px);
+      background-size: 32px 32px;
+      opacity: 0.4;
+      pointer-events: none;
+      z-index: 0;
+    }
+
+    /* all content above grid */
+    nav, .hero, section, footer { position: relative; z-index: 1; }
+
+    /* ── NAV ─────────────────────────────────────────── */
+    nav {
+      position: sticky; top: 0; z-index: 100;
+      background: rgba(6,10,14,0.88);
+      backdrop-filter: blur(16px);
+      border-bottom: 1px solid var(--border);
+      padding: 0 clamp(1rem, 4vw, 3rem);
+      height: 48px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    .nav-brand {
+      font-size: 13px; font-weight: 800; color: var(--green);
+      letter-spacing: 0.08em; display: flex; align-items: center; gap: 8px;
+    }
+    .nav-brand::before {
+      content: '';
+      width: 7px; height: 7px; border-radius: 50%;
+      background: var(--green);
+      animation: blink 2.4s ease-in-out infinite;
+    }
+    @keyframes blink { 0%,100%{opacity:1} 50%{opacity:0.2} }
+
+    .nav-links { display: flex; gap: 0; list-style: none; }
+    .nav-links a {
+      display: block; padding: 0 16px; height: 48px; line-height: 48px;
+      color: var(--text-mid); text-decoration: none; font-size: 12px;
+      transition: color .15s; border-left: 1px solid var(--border);
+    }
+    .nav-links a:hover { color: var(--text); }
+    .nav-links li:last-child a { border-right: 1px solid var(--border); }
+
+    /* ── HERO ────────────────────────────────────────── */
+    .hero {
+      max-width: 1100px; margin: 0 auto;
+      padding: clamp(4rem,10vh,8rem) clamp(1rem,4vw,3rem);
+      display: grid; grid-template-columns: 1fr auto;
+      gap: 3rem; align-items: center;
+    }
+
+    .hero-left { max-width: 620px; }
+
+    .hero-badge {
+      display: inline-flex; align-items: center; gap: 8px;
+      border: 1px solid var(--border-mid); padding: 5px 14px;
+      font-size: 11px; color: var(--text-mid); margin-bottom: 2rem;
+      letter-spacing: 0.06em;
+    }
+    .hero-badge span { color: var(--green); }
+
+    h1 {
+      font-size: clamp(52px, 7.5vw, 100px);
+      font-weight: 800;
+      line-height: 0.92;
+      letter-spacing: -0.03em;
+      color: #ddeeff;
+      margin-bottom: 1.5rem;
+    }
+    h1 .g { color: var(--green); }
+    h1 .a { color: var(--amber); }
+
+    .hero-desc {
+      font-size: 13px; color: var(--text-mid);
+      line-height: 1.8; max-width: 500px; margin-bottom: 2.5rem;
+    }
+
+    .hero-pills { display: flex; flex-wrap: wrap; gap: 8px; }
+    .pill {
+      border: 1px solid var(--border-mid); padding: 4px 12px;
+      font-size: 11px; color: var(--text-dim); letter-spacing: 0.05em;
+    }
+    .pill.g { border-color: rgba(0,232,135,0.3); color: var(--green); }
+    .pill.a { border-color: rgba(255,184,63,0.3); color: var(--amber); }
+
+    /* right side terminal block */
+    .hero-terminal {
+      width: 340px; flex-shrink: 0;
+      border: 1px solid var(--border-mid); background: var(--surface);
+      font-size: 11.5px; line-height: 1.9;
+    }
+    .terminal-bar {
+      background: var(--surface-2); border-bottom: 1px solid var(--border);
+      padding: 8px 14px; display: flex; align-items: center; gap: 8px;
+      font-size: 11px; color: var(--text-dim);
+    }
+    .terminal-bar .dot { width: 8px; height: 8px; border-radius: 50%; }
+    .dot-r { background: #ff5f57; }
+    .dot-y { background: #ffbd2e; }
+    .dot-g { background: var(--green); }
+    .terminal-body { padding: 16px 18px; }
+    .tl { display: block; }
+    .tl .p { color: var(--green); }    /* prompt */
+    .tl .c { color: var(--text-dim); }  /* comment */
+    .tl .k { color: var(--amber); }    /* keyword */
+    .tl .v { color: var(--blue); }     /* value */
+    .tl .s { color: var(--text-mid); } /* string */
+
+    /* ── SHARED SECTION STYLES ────────────────────────── */
+    .wrap {
+      max-width: 1100px; margin: 0 auto;
+      padding: clamp(3rem,7vh,6rem) clamp(1rem,4vw,3rem);
+    }
+
+    .section-eyebrow {
+      font-size: 10px; font-weight: 700; letter-spacing: 0.15em;
+      text-transform: uppercase; color: var(--text-dim); margin-bottom: 10px;
+    }
+    .section-title {
+      font-size: clamp(22px, 3vw, 30px); font-weight: 800;
+      color: #ddeeff; margin-bottom: 10px; letter-spacing: -0.02em;
+    }
+    .section-sub {
+      font-size: 12px; color: var(--text-mid); max-width: 560px;
+      line-height: 1.8; margin-bottom: 3rem;
+    }
+
+    hr.divider { border: none; border-top: 1px solid var(--border); }
+
+    /* ── ARCHITECTURE ─────────────────────────────────── */
+    .arch-outer {
+      border: 1px solid var(--border-mid); background: var(--surface);
+      padding: clamp(1.5rem,3vw,2.5rem);
+    }
+
+    .arch-grid {
+      display: grid;
+      grid-template-columns: minmax(120px,150px) 1fr minmax(130px,160px);
+      gap: 20px;
+      align-items: stretch;
+    }
+
+    .anode {
+      border: 1px solid var(--border-mid); background: var(--surface-2);
+      padding: 1.25rem; transition: border-color .2s, box-shadow .2s;
+      cursor: default;
+    }
+    .anode:hover { border-color: var(--blue); box-shadow: 0 0 24px rgba(90,171,255,.08); }
+    .anode.g:hover { border-color: var(--green); box-shadow: 0 0 24px var(--green-glow); }
+    .anode.a:hover { border-color: var(--amber); box-shadow: 0 0 24px var(--amber-glow); }
+
+    .anode-icon { font-size: 18px; margin-bottom: 8px; }
+    .anode-name { font-size: 12px; font-weight: 700; color: #ddeeff; margin-bottom: 4px; }
+    .anode-role { font-size: 10px; color: var(--text-dim); line-height: 1.6; }
+
+    .phase-block {
+      border: 1px solid var(--border-mid); padding: 1.5rem;
+      position: relative; margin-bottom: 14px;
+    }
+    .phase-block:last-child { margin-bottom: 0; }
+    .phase-block.p1 { border-color: rgba(0,232,135,0.3); background: var(--green-glow); }
+    .phase-block.p2 { border-color: rgba(255,184,63,0.3); background: var(--amber-glow); }
+
+    .phase-tag {
+      position: absolute; top: -9px; left: 14px;
+      background: var(--surface); padding: 0 8px;
+      font-size: 10px; font-weight: 800; letter-spacing: 0.08em;
+    }
+    .phase-block.p1 .phase-tag { color: var(--green); }
+    .phase-block.p2 .phase-tag { color: var(--amber); }
+
+    .pstep {
+      display: flex; align-items: center; gap: 10px;
+      font-size: 11px; color: var(--text-mid); padding: 3px 0;
+    }
+    .pstep-n {
+      width: 18px; height: 18px; flex-shrink: 0;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 9px; font-weight: 800;
+    }
+    .p1 .pstep-n { background: var(--green-dim); color: var(--green); }
+    .p2 .pstep-n { background: var(--amber-dim); color: var(--amber); }
+
+    .arch-arrow {
+      display: flex; align-items: center; justify-content: center;
+      gap: 8px; padding: 10px 0;
+      font-size: 10px; color: var(--text-dim); letter-spacing: 0.05em;
+    }
+    .arch-arrow::before, .arch-arrow::after {
+      content: ''; flex: 1; height: 1px; background: var(--border);
+    }
+
+    .rside { display: flex; flex-direction: column; gap: 14px; justify-content: center; }
+
+    /* ── WORKFLOW ANIMATOR ────────────────────────────── */
+    .animator {
+      border: 1px solid var(--border-mid); background: var(--surface);
+      overflow: hidden;
+    }
+
+    .tab-bar {
+      display: flex; border-bottom: 1px solid var(--border);
+    }
+    .tab {
+      flex: 1; padding: 12px 20px;
+      font-family: 'JetBrains Mono', monospace; font-size: 11px; font-weight: 700;
+      background: none; border: none; cursor: pointer;
+      color: var(--text-dim); letter-spacing: 0.05em;
+      border-bottom: 2px solid transparent; margin-bottom: -1px;
+      transition: color .15s, border-color .15s;
+    }
+    .tab.on.p1 { color: var(--green); border-bottom-color: var(--green); }
+    .tab.on.p2 { color: var(--amber); border-bottom-color: var(--amber); }
+
+    /* flow track */
+    .flow-track {
+      padding: 2rem clamp(1rem,3vw,2rem);
+      overflow-x: auto;
+    }
+
+    .flow-inner {
+      display: flex; align-items: stretch; gap: 0;
+      min-width: max-content;
+    }
+
+    .fstep {
+      width: 170px; flex-shrink: 0;
+      border: 1px solid var(--border); background: var(--surface-2);
+      padding: 1rem;
+      transition: all .35s ease;
+      cursor: pointer; position: relative;
+      overflow: hidden;
+    }
+    .fstep::before {
+      content: ''; position: absolute; inset: 0;
+      background: var(--green-glow); opacity: 0; transition: opacity .35s;
+    }
+    .fstep.p2::before { background: var(--amber-glow); }
+    .fstep.on::before { opacity: 1; }
+    .fstep.on.p1 { border-color: var(--green); box-shadow: 0 0 32px var(--green-glow); }
+    .fstep.on.p2 { border-color: var(--amber); box-shadow: 0 0 32px var(--amber-glow); }
+    .fstep.done { opacity: 0.45; }
+
+    .fstep-check {
+      position: absolute; top: 6px; right: 8px;
+      font-size: 10px; color: var(--green); opacity: 0; transition: opacity .2s;
+    }
+    .fstep.done .fstep-check { opacity: 1; }
+
+    .fstep-num {
+      font-size: 9px; font-weight: 700; letter-spacing: 0.12em;
+      color: var(--text-dim); margin-bottom: 6px;
+      position: relative; z-index: 1;
+    }
+    .fstep-name {
+      font-size: 11px; font-weight: 700; color: #ddeeff;
+      margin-bottom: 4px; position: relative; z-index: 1; line-height: 1.3;
+    }
+    .fstep.on.p1 .fstep-name { color: var(--green); }
+    .fstep.on.p2 .fstep-name { color: var(--amber); }
+    .fstep-desc {
+      font-size: 10px; color: var(--text-dim); line-height: 1.5;
+      position: relative; z-index: 1;
+    }
+
+    /* connectors */
+    .conn {
+      display: flex; align-items: center; flex-shrink: 0;
+      width: 36px; position: relative;
+    }
+    .conn-line {
+      flex: 1; height: 2px; background: var(--border);
+      transition: background .35s;
+      position: relative; overflow: hidden;
+    }
+    .conn.on .conn-line { background: var(--green); }
+    .conn.on.p2 .conn-line { background: var(--amber); }
+
+    /* traveling dot */
+    .conn.on .conn-line::after {
+      content: ''; position: absolute;
+      top: -3px; left: -8px;
+      width: 8px; height: 8px; border-radius: 50%;
+      background: var(--green);
+      animation: travel .7s ease-in-out infinite;
+    }
+    .conn.on.p2 .conn-line::after { background: var(--amber); }
+    @keyframes travel { from { left: -8px } to { left: 100% } }
+
+    .conn-arrow {
+      color: var(--border); font-size: 9px; margin-left: 2px;
+      transition: color .35s;
+    }
+    .conn.on .conn-arrow { color: var(--green); }
+    .conn.on.p2 .conn-arrow { color: var(--amber); }
+
+    /* done node */
+    .fstep-done {
+      width: 100px; flex-shrink: 0;
+      border: 1px solid var(--border); background: var(--surface-2);
+      padding: 1rem; display: flex; flex-direction: column;
+      justify-content: center; transition: all .35s;
+      position: relative; overflow: hidden;
+    }
+    .fstep-done::before {
+      content: ''; position: absolute; inset: 0;
+      background: var(--green-glow); opacity: 0; transition: opacity .35s;
+    }
+    .fstep-done.p2::before { background: var(--amber-glow); }
+    .fstep-done.on::before { opacity: 1; }
+    .fstep-done.on.p1 { border-color: var(--green); box-shadow: 0 0 32px var(--green-glow); }
+    .fstep-done.on.p2 { border-color: var(--amber); box-shadow: 0 0 32px var(--amber-glow); }
+    .fstep-done .fstep-num { font-size: 9px; font-weight: 700; letter-spacing: .12em; color: var(--text-dim); margin-bottom: 4px; position: relative; z-index: 1; }
+    .fstep-done .fstep-name { font-size: 11px; font-weight: 700; color: #ddeeff; position: relative; z-index: 1; }
+    .fstep-done.on.p1 .fstep-name { color: var(--green); }
+    .fstep-done.on.p2 .fstep-name { color: var(--amber); }
+
+    /* detail panel */
+    .detail-panel {
+      margin: 0 clamp(1rem,3vw,2rem);
+      border: 1px solid var(--border); background: var(--surface-2);
+      padding: 1.25rem; min-height: 90px;
+      transition: border-color .3s;
+    }
+    .detail-panel.p1a { border-color: rgba(0,232,135,0.25); }
+    .detail-panel.p2a { border-color: rgba(255,184,63,0.25); }
+
+    .dp-name { font-size: 13px; font-weight: 700; color: #ddeeff; margin-bottom: 6px; }
+    .dp-body { font-size: 11.5px; color: var(--text-mid); line-height: 1.75; }
+    .dp-tags { margin-top: 10px; display: flex; flex-wrap: wrap; gap: 6px; }
+    .dp-tag {
+      font-size: 10px; padding: 2px 9px;
+      background: var(--green-dim); color: var(--green);
+    }
+    .dp-tag.a { background: var(--amber-dim); color: var(--amber); }
+
+    /* controls */
+    .controls {
+      display: flex; align-items: center; gap: 12px;
+      padding: 1rem clamp(1rem,3vw,2rem) 1.5rem;
+      border-top: 1px solid var(--border); margin-top: 1.25rem;
+    }
+    .btn {
+      font-family: 'JetBrains Mono', monospace; font-size: 11px; font-weight: 700;
+      padding: 7px 16px; border: 1px solid; cursor: pointer; background: none;
+      letter-spacing: 0.05em; transition: all .15s;
+    }
+    .btn.g { color: var(--green); border-color: var(--green); }
+    .btn.g:hover { background: var(--green); color: var(--bg); }
+    .btn.a { color: var(--amber); border-color: var(--amber); }
+    .btn.a:hover { background: var(--amber); color: var(--bg); }
+    .btn.dim { color: var(--text-dim); border-color: var(--border-mid); }
+    .btn.dim:hover { color: var(--text); border-color: var(--text-mid); }
+    .ctrl-status { font-size: 10px; color: var(--text-dim); margin-left: auto; }
+    .ctrl-status .cv { color: var(--text-mid); }
+
+    /* ── DESIGN DECISIONS ─────────────────────────────── */
+    .decisions {
+      display: grid; grid-template-columns: repeat(auto-fill, minmax(290px, 1fr));
+      gap: 1px; background: var(--border);
+    }
+    .dc {
+      background: var(--surface); padding: 1.5rem;
+      transition: background .15s;
+    }
+    .dc:hover { background: var(--surface-2); }
+    .dc-num { font-size: 10px; font-weight: 700; color: var(--text-dim); letter-spacing: 0.1em; margin-bottom: 8px; }
+    .dc-title { font-size: 13px; font-weight: 700; color: #ddeeff; margin-bottom: 8px; }
+    .dc-body { font-size: 11.5px; color: var(--text-mid); line-height: 1.75; }
+    .dc-tag {
+      display: inline-block; font-size: 9px; padding: 2px 7px; margin-top: 10px; margin-right: 4px;
+      background: var(--green-dim); color: var(--green); letter-spacing: 0.06em;
+    }
+    .dc-tag.a { background: var(--amber-dim); color: var(--amber); }
+
+    /* ── FOOTER ───────────────────────────────────────── */
+    footer {
+      border-top: 1px solid var(--border);
+      max-width: 1100px; margin: 0 auto;
+      padding: 1.5rem clamp(1rem,4vw,3rem);
+      display: flex; align-items: center; justify-content: space-between;
+      flex-wrap: wrap; gap: 1rem;
+    }
+    .ft-brand { font-size: 12px; font-weight: 800; color: var(--green); display: flex; align-items: center; gap: 8px; }
+    .ft-links { display: flex; gap: 0; }
+    .ft-links a {
+      font-size: 11px; color: var(--text-dim); text-decoration: none;
+      padding: 0 16px; border-left: 1px solid var(--border);
+      transition: color .15s;
+    }
+    .ft-links a:last-child { border-right: 1px solid var(--border); }
+    .ft-links a:hover { color: var(--text); }
+
+    /* ── SCROLLBAR ────────────────────────────────────── */
+    ::-webkit-scrollbar { width: 4px; height: 4px; }
+    ::-webkit-scrollbar-track { background: var(--bg); }
+    ::-webkit-scrollbar-thumb { background: var(--border-mid); }
+
+    /* ── RESPONSIVE ───────────────────────────────────── */
+    @media (max-width: 768px) {
+      .hero { grid-template-columns: 1fr; }
+      .hero-terminal { display: none; }
+      .arch-grid { grid-template-columns: 1fr; }
+      .rside { flex-direction: row; flex-wrap: wrap; }
+      .rside .anode { flex: 1; min-width: 140px; }
+      .nav-links { display: none; }
+    }
+  </style>
+</head>
+<body>
+
+<!-- ── NAV ─────────────────────────────────────────────── -->
+<nav>
+  <div class="nav-brand">fsm</div>
+  <ul class="nav-links">
+    <li><a href="#architecture">architecture</a></li>
+    <li><a href="#workflow">workflow</a></li>
+    <li><a href="#design">design</a></li>
+    <li><a href="https://github.com/umarhadi/fsm" target="_blank">↗ github</a></li>
+  </ul>
+</nav>
+
+<!-- ── HERO ─────────────────────────────────────────────── -->
+<div class="hero">
+  <div class="hero-left">
+    <div class="hero-badge">
+      go &middot; superfly/fsm &middot; devicemapper &middot; sqlite
+    </div>
+
+    <h1>
+      container<br>
+      <span class="g">image</span><br>
+      <span class="a">orche</span>strator
+    </h1>
+
+    <p class="hero-desc">
+      a durable, crash-resistant container image pipeline built on
+      the superfly/fsm library. two-phase workflow: a deterministic
+      <span style="color:var(--green)">prepare</span> phase that
+      runs once per image family, and a per-invocation
+      <span style="color:var(--amber)">activate</span> phase that
+      creates a fresh copy-on-write snapshot.
+    </p>
+
+    <div class="hero-pills">
+      <span class="pill g">phase 1: prepare</span>
+      <span class="pill a">phase 2: activate</span>
+      <span class="pill">boltdb crash recovery</span>
+      <span class="pill">dm thin provisioning</span>
+      <span class="pill">content-addressed storage</span>
+    </div>
+  </div>
+
+  <div class="hero-terminal">
+    <div class="terminal-bar">
+      <span class="dot dot-r"></span>
+      <span class="dot dot-y"></span>
+      <span class="dot dot-g"></span>
+      <span style="margin-left:4px">~/fsm</span>
+    </div>
+    <div class="terminal-body">
+      <span class="tl"><span class="p">$</span> <span class="s">./fsm --golang</span></span>
+      <span class="tl"> </span>
+      <span class="tl"><span class="c">// check if already prepared</span></span>
+      <span class="tl"><span class="v">prepared</span> = <span class="k">false</span></span>
+      <span class="tl"> </span>
+      <span class="tl"><span class="c">// phase 1 — prepare-golang</span></span>
+      <span class="tl"><span class="k">FSM</span> FetchManifest     <span class="v">✓</span></span>
+      <span class="tl"><span class="k">FSM</span> DownloadBlobs     <span class="v">✓</span></span>
+      <span class="tl"><span class="k">FSM</span> PrepareThinBase   <span class="v">✓</span></span>
+      <span class="tl"><span class="k">FSM</span> UnpackIntoBase    <span class="v">✓</span></span>
+      <span class="tl"><span class="v">prepared</span> = <span class="k">true</span>  <span class="c">← SQLite</span></span>
+      <span class="tl"> </span>
+      <span class="tl"><span class="c">// phase 2 — activate-a3f9</span></span>
+      <span class="tl"><span class="k">FSM</span> ActivateSnapshot  <span class="v">✓</span></span>
+      <span class="tl"> </span>
+      <span class="tl"><span class="c">// done</span></span>
+      <span class="tl"><span class="v">mount</span>= /mnt/images/412930</span>
+    </div>
+  </div>
+</div>
+
+<hr class="divider">
+
+<!-- ── ARCHITECTURE ─────────────────────────────────────── -->
+<div class="wrap" id="architecture">
+  <div class="section-eyebrow">// 01 — system overview</div>
+  <h2 class="section-title">Architecture</h2>
+  <p class="section-sub">
+    two independent FSM workflows share a single SQLite database and BoltDB
+    state store. prepare runs with a deterministic ID per family — crash and
+    restart and it picks up from the last completed step. activate always
+    creates a fresh thin snapshot.
+  </p>
+
+  <div class="arch-outer">
+    <div class="arch-grid">
+
+      <!-- S3 -->
+      <div class="anode" style="display:flex;flex-direction:column;justify-content:center;">
+        <div class="anode-icon">☁</div>
+        <div class="anode-name">S3 Bucket</div>
+        <div class="anode-role">public bucket<br>anonymous access<br>image layers<br>images/{family}/*</div>
+      </div>
+
+      <!-- Middle: Phase 1 + 2 -->
+      <div>
+        <div class="phase-block p1">
+          <span class="phase-tag">PHASE 1 — prepare-{family}</span>
+          <div class="pstep"><span class="pstep-n">1</span>FetchManifest — list S3 keys</div>
+          <div class="pstep"><span class="pstep-n">2</span>DownloadBlobs — fetch layers to blobs/</div>
+          <div class="pstep"><span class="pstep-n">3</span>PrepareThinBase — create DM volume + ext4</div>
+          <div class="pstep"><span class="pstep-n">4</span>UnpackIntoBase — extract OCI tarballs</div>
+        </div>
+
+        <div class="arch-arrow">prepared=1 written to SQLite by main.go</div>
+
+        <div class="phase-block p2">
+          <span class="phase-tag">PHASE 2 — activate-{uuid} (each invocation)</span>
+          <div class="pstep"><span class="pstep-n">1</span>ActivateSnapshot — thin clone from base</div>
+          <div class="pstep"><span class="pstep-n">→</span>mounted at /mnt/images/{snap_lv_id}</div>
+        </div>
+      </div>
+
+      <!-- Right: storage nodes -->
+      <div class="rside">
+        <div class="anode g">
+          <div class="anode-icon">◫</div>
+          <div class="anode-name">SQLite</div>
+          <div class="anode-role">fsm.db<br>WAL mode<br>images, blobs,<br>activations, locks</div>
+        </div>
+        <div class="anode a">
+          <div class="anode-icon">▣</div>
+          <div class="anode-name">DeviceMapper</div>
+          <div class="anode-role">thin pool<br>base volumes<br>cow snapshots<br>/dev/mapper/*</div>
+        </div>
+        <div class="anode">
+          <div class="anode-icon">◈</div>
+          <div class="anode-name">BoltDB</div>
+          <div class="anode-role">FSM state<br>./fsmdb/<br>crash recovery<br>per-step checkpoints</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<hr class="divider">
+
+<!-- ── WORKFLOW ANIMATOR ─────────────────────────────────── -->
+<div class="wrap" id="workflow">
+  <div class="section-eyebrow">// 02 — fsm workflow</div>
+  <h2 class="section-title">Workflow Animator</h2>
+  <p class="section-sub">
+    each step is a durable BoltDB checkpoint. crash at any point and
+    resume picks up from the last completed transition. click a step to
+    inspect it, or press play to walk through the state machine.
+  </p>
+
+  <div class="animator">
+    <div class="tab-bar">
+      <button class="tab on p1" id="tab1" onclick="switchPhase(1)">▶ phase 1: prepare-{family}</button>
+      <button class="tab p2" id="tab2" onclick="switchPhase(2)">▶ phase 2: activate-{uuid}</button>
+    </div>
+
+    <div class="flow-track">
+      <div class="flow-inner" id="flow"></div>
+    </div>
+
+    <div class="detail-panel" id="detail">
+      <div class="dp-name" style="color:var(--text-dim)">ready</div>
+      <div class="dp-body">press play to walk through the workflow, or click any step to inspect it.</div>
+    </div>
+
+    <div class="controls">
+      <button class="btn g" id="play-btn" onclick="playToggle()">▶ play</button>
+      <button class="btn dim" onclick="resetAnim()">↺ reset</button>
+      <span class="ctrl-status">step <span class="cv" id="sc">0</span> / <span class="cv" id="st">0</span></span>
+    </div>
+  </div>
+</div>
+
+<hr class="divider">
+
+<!-- ── DESIGN DECISIONS ───────────────────────────────────── -->
+<div class="wrap" id="design">
+  <div class="section-eyebrow">// 03 — design decisions</div>
+  <h2 class="section-title">Key Decisions</h2>
+  <p class="section-sub">
+    the refactor was driven by one principle: trust the FSM to know which
+    steps ran. remove everything inside steps that duplicates what BoltDB
+    already tracks.
+  </p>
+
+  <div class="decisions">
+    <div class="dc">
+      <div class="dc-num">// 01</div>
+      <div class="dc-title">two-phase FSM design</div>
+      <div class="dc-body">prepare and activate have different semantics. prepare is idempotent — it runs once per image family forever. activate creates a fresh snapshot every invocation. separating them into distinct FSM workflows makes each phase's intent explicit and independently resumable.</div>
+      <span class="dc-tag">architecture</span>
+    </div>
+    <div class="dc">
+      <div class="dc-num">// 02</div>
+      <div class="dc-title">deterministic run ID</div>
+      <div class="dc-body">using <code>prepare-{family}</code> as the FSM run ID means crash recovery naturally resumes the exact same run via BoltDB. no need for a <code>prepared</code> flag inside steps — the FSM already knows which transitions completed. the flag is only checked in main.go before deciding whether to start phase 1.</div>
+      <span class="dc-tag">crash recovery</span>
+    </div>
+    <div class="dc">
+      <div class="dc-num">// 03</div>
+      <div class="dc-title">trust the response chain</div>
+      <div class="dc-body">each FSM step receives state from the previous step via <code>r.W.Msg</code>. re-querying the DB inside a step for data already in the response chain defeats the purpose of durable state management. PrepareThinBase and ActivateSnapshot were simplified to read <code>r.W.Msg.BaseLvID</code> directly.</div>
+      <span class="dc-tag">fsm principle</span>
+    </div>
+    <div class="dc">
+      <div class="dc-num">// 04</div>
+      <div class="dc-title">prepared flag lives in main.go</div>
+      <div class="dc-body">checking <code>prepared</code> inside UnpackIntoBase says "don't trust the FSM to know if this step ran." that undermines the entire point of using a durable state machine. the flag is checked once in main.go before starting phase 1, then set there after phase 1 completes.</div>
+      <span class="dc-tag">correctness</span>
+    </div>
+    <div class="dc">
+      <div class="dc-num">// 05</div>
+      <div class="dc-title">fsm.Abort for non-retryable errors</div>
+      <div class="dc-body">if S3 returns zero layers, retrying won't help — the family doesn't exist. <code>fsm.Abort(err)</code> signals the library to stop immediately instead of burning all retry attempts on a hopeless operation. blob download failures propagate normally so the FSM retries them on transient S3 errors.</div>
+      <span class="dc-tag g">error handling</span>
+    </div>
+    <div class="dc">
+      <div class="dc-num">// 06</div>
+      <div class="dc-title">WriteResult removed as FSM step</div>
+      <div class="dc-body">writing a text file is not a meaningful crash checkpoint. if the process dies after mounting a snapshot, there's no need to re-mount to write a file — the result can be derived from SQLite. moved to main.go after both FSMs complete, making the step graph honest about what actually needs durability.</div>
+      <span class="dc-tag a">simplicity</span>
+    </div>
+  </div>
+</div>
+
+<hr class="divider">
+
+<!-- ── FOOTER ──────────────────────────────────────────────── -->
+<footer>
+  <div class="ft-brand">
+    <span style="width:7px;height:7px;border-radius:50%;background:var(--green);display:inline-block"></span>
+    fsm
+  </div>
+  <div class="ft-links">
+    <a href="https://github.com/umarhadi/fsm" target="_blank">github.com/umarhadi/fsm</a>
+    <a href="https://github.com/superfly/fsm" target="_blank">superfly/fsm</a>
+    <a href="https://kernel.org/doc/html/latest/admin-guide/device-mapper/thin-provisioning.html" target="_blank">dm thin docs</a>
+  </div>
+</footer>
+
+<script>
+// ── DATA ──────────────────────────────────────────────────────
+const PHASES = {
+  1: {
+    color: 'p1', btnClass: 'g',
+    steps: [
+      {
+        name: 'FetchManifest',
+        desc: 'list S3 keys',
+        detail: 'Lists all layer keys for the image family from S3. No downloads yet. Upserts the image record in SQLite and returns the manifest (Key/ETag/Size only) via the FSM response chain. No lock needed — listing is cheap and idempotent.',
+        tags: ['S3', 'SQLite', 'no-lock'],
+      },
+      {
+        name: 'DownloadBlobs',
+        desc: 'fetch & verify layers',
+        detail: 'Acquires fetch:{family} SQLite lock. Calls DownloadIfMissing per layer — skips if the file already exists locally. Computes SHA256 digest while streaming. Upserts blob records to SQLite. Returns enriched manifest with local Path + Digest.',
+        tags: ['S3', 'SHA256', 'idempotent', 'locked'],
+      },
+      {
+        name: 'PrepareThinBase',
+        desc: 'create DM base volume',
+        detail: 'Acquires thin:base SQLite lock. Calls ensureThinPool (idempotent — creates loop-backed pool once). Allocates a random base_lv_id, creates the thin device, formats with ext4, and mounts at /mnt/base_lv_{id}. Writes base_lv_id to SQLite.',
+        tags: ['DeviceMapper', 'ext4', 'loop-device', 'locked'],
+      },
+      {
+        name: 'UnpackIntoBase',
+        desc: 'extract OCI tarballs',
+        detail: 'Iterates the manifest in layer sequence order. Calls UnpackTarToDir per blob — validates paths (no .. traversal, no absolute paths), handles OCI whiteout files, tracks extracted size for zip-bomb protection. Unmounts base volume when done.',
+        tags: ['OCI', 'security', 'path-validation', 'whiteout'],
+      },
+    ],
+  },
+  2: {
+    color: 'p2', btnClass: 'a',
+    steps: [
+      {
+        name: 'ActivateSnapshot',
+        desc: 'create thin clone',
+        detail: 'Reads base_lv_id from r.W.Msg.BaseLvID — passed by main.go via NewRequest, no DB re-query needed. Allocates a random snap_lv_id. Sends create_snap to the thin pool via dmsetup message. Mounts at /mnt/images/{snap_lv_id}. Records activation in SQLite.',
+        tags: ['DeviceMapper', 'copy-on-write', 'r.W.Msg', 'per-invocation'],
+      },
+    ],
+  },
+};
+
+// ── STATE ──────────────────────────────────────────────────────
+let phase = 1;
+let cur   = -1;   // -1 = idle, 0..n-1 = steps, n = done
+let playing = false;
+let timer = null;
+
+// ── RENDER ──────────────────────────────────────────────────────
+function render() {
+  const { steps, color } = PHASES[phase];
+  const flow = document.getElementById('flow');
+  flow.innerHTML = '';
+
+  steps.forEach((s, i) => {
+    if (i > 0) {
+      const conn = el('div', `conn${i < cur ? ' on ' + color : ''}${color === 'p2' ? ' p2' : ''}`);
+      const line = el('div', 'conn-line'); conn.appendChild(line);
+      const arr  = el('div', 'conn-arrow'); arr.textContent = '▶'; conn.appendChild(arr);
+      flow.appendChild(conn);
+    }
+    const active = i === cur;
+    const done   = i < cur;
+    const node   = el('div', `fstep${active ? ' on ' + color : ''}${done ? ' done' : ''}${color === 'p2' ? ' p2' : ''}`);
+    node.innerHTML = `
+      <span class="fstep-check">✓</span>
+      <div class="fstep-num">step ${String(i+1).padStart(2,'0')}</div>
+      <div class="fstep-name">${s.name}</div>
+      <div class="fstep-desc">${s.desc}</div>
+    `;
+    node.onclick = () => inspect(i);
+    flow.appendChild(node);
+  });
+
+  // connector to done
+  const lastConn = el('div', `conn${cur >= steps.length ? ' on ' + color : ''}${color === 'p2' ? ' p2' : ''}`);
+  const lline = el('div', 'conn-line'); lastConn.appendChild(lline);
+  const larr  = el('div', 'conn-arrow'); larr.textContent = '▶'; lastConn.appendChild(larr);
+  flow.appendChild(lastConn);
+
+  // done node
+  const doneNode = el('div', `fstep-done${cur >= steps.length ? ' on ' + color : ''}${color === 'p2' ? ' p2' : ''}`);
+  doneNode.innerHTML = `
+    <div class="fstep-num">end</div>
+    <div class="fstep-name">done</div>
+  `;
+  flow.appendChild(doneNode);
+
+  document.getElementById('sc').textContent = Math.max(0, cur + 1);
+  document.getElementById('st').textContent = steps.length;
+}
+
+function inspect(i) {
+  const s = PHASES[phase].steps[i];
+  const c = PHASES[phase].color;
+  const panel = document.getElementById('detail');
+  panel.className = `detail-panel ${c === 'p1' ? 'p1a' : 'p2a'}`;
+  panel.innerHTML = `
+    <div class="dp-name">${s.name}</div>
+    <div class="dp-body">${s.detail}</div>
+    <div class="dp-tags">${s.tags.map(t => `<span class="dp-tag${c==='p2'?' a':''}">${t}</span>`).join('')}</div>
+  `;
+}
+
+function setIdle() {
+  const panel = document.getElementById('detail');
+  panel.className = 'detail-panel';
+  panel.innerHTML = `
+    <div class="dp-name" style="color:var(--text-dim)">ready</div>
+    <div class="dp-body">press play to walk through the workflow, or click any step to inspect it.</div>
+  `;
+}
+
+// ── CONTROLS ────────────────────────────────────────────────────
+function playToggle() {
+  if (playing) {
+    clearInterval(timer); playing = false;
+    document.getElementById('play-btn').textContent = '▶ play';
+    return;
+  }
+  const steps = PHASES[phase].steps;
+  if (cur >= steps.length) cur = -1;
+  playing = true;
+  document.getElementById('play-btn').textContent = '⏸ pause';
+
+  timer = setInterval(() => {
+    cur++;
+    render();
+    if (cur < steps.length) {
+      inspect(cur);
+    } else {
+      clearInterval(timer); playing = false;
+      document.getElementById('play-btn').textContent = '▶ play';
+      const c = PHASES[phase].color;
+      const panel = document.getElementById('detail');
+      panel.className = `detail-panel ${c === 'p1' ? 'p1a' : 'p2a'}`;
+      panel.innerHTML = `
+        <div class="dp-name" style="color:var(--${c === 'p1' ? 'green' : 'amber'})">workflow complete</div>
+        <div class="dp-body">${c === 'p1'
+          ? 'FSM transitions to "done" state. main.go sets prepared=1 in SQLite, then retrieves image_id and base_lv_id to seed Phase 2.'
+          : 'FSM transitions to "done" state. main.go writes results.txt (image_id, base_lv, snap_lv, mount path) and calls mgr.Shutdown().'
+        }</div>
+      `;
+    }
+  }, 1300);
+}
+
+function resetAnim() {
+  clearInterval(timer); playing = false; cur = -1;
+  document.getElementById('play-btn').textContent = '▶ play';
+  render(); setIdle();
+}
+
+function switchPhase(p) {
+  clearInterval(timer); playing = false; phase = p; cur = -1;
+  document.getElementById('play-btn').textContent = '▶ play';
+  document.getElementById('play-btn').className = `btn ${PHASES[p].btnClass}`;
+  document.getElementById('tab1').className = `tab${p === 1 ? ' on p1' : ''}`;
+  document.getElementById('tab2').className = `tab${p === 2 ? ' on p2' : ''}`;
+  render(); setIdle();
+}
+
+// ── UTIL ─────────────────────────────────────────────────────────
+function el(tag, cls) {
+  const e = document.createElement(tag);
+  if (cls) e.className = cls;
+  return e;
+}
+
+// ── INIT ─────────────────────────────────────────────────────────
+render();
+</script>
+</body>
+</html>
